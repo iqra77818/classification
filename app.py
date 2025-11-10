@@ -3,52 +3,62 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 
-# UI configs
 st.set_page_config(page_title="Cats vs Dogs Classifier", layout="centered")
 
-st.markdown("""
-<center>
+# custom CSS ui premium glassmorphism
+page_bg = """
+<style>
+.main {
+    background: linear-gradient(135deg, #ebf4ff 0%, #fdf2f8 100%);
+}
+.upload-box {
+    background: rgba(255,255,255,0.55);
+    border-radius: 18px;
+    padding: 25px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.25);
+    box-shadow: 0px 8px 20px rgba(0,0,0,0.08);
+}
+.predict-btn {
+    width:100%;
+    font-size:18px;
+    border-radius:10px;
+    height:55px;
+}
+</style>
+"""
+st.markdown(page_bg, unsafe_allow_html=True)
 
-# 🐶 Cats vs Dogs Classifier 🐱  
-Upload an image & the AI model will tell whether it's a **Cat** or a **Dog**.
+st.markdown("<h1 style='text-align:center; font-size:40px; color:#1a1a1a;'>🐶 Cats vs Dogs AI Classifier 🐱</h1>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align:center; color:#4B5563;'>Upload an image & let AI detect which one it is</h4>", unsafe_allow_html=True)
+st.write("")
 
-</center>
-""", unsafe_allow_html=True)
+model = tf.keras.models.load_model("cats_dogs_model.keras")
 
-@st.cache_resource
-def load_model():
-    return tf.keras.models.load_model("cats_dogs_model.keras", compile=False)
+uploaded_file = st.file_uploader("Upload Image", type=["jpg","png","jpeg"])
 
-model = load_model()
-
-uploaded_file = st.file_uploader("Upload an image...", type=["jpg", "png", "jpeg"])
-
-def preprocess(image):
-    image = image.resize((150,150))
-    img = np.array(image)/255.0
+def preprocess(img):
+    img = img.resize((128,128))
+    img = np.array(img) / 255.0
     img = np.expand_dims(img, axis=0).astype("float32")
     return img
 
-if uploaded_file:
-    st.markdown("### Preview")
-    image = Image.open(uploaded_file).convert("RGB")
+st.markdown('<div class="upload-box">', unsafe_allow_html=True)
 
-    st.image(image, width=350)
+if uploaded_file is not None:
+    img = Image.open(uploaded_file)
+    st.image(img, caption="Uploaded Image Preview", width=350)
 
-    with st.spinner("Predicting..."):
-        img = preprocess(image)
-        result = model.predict(img)[0][0]
+    if st.button("🔍 Predict", type="primary"):
+        p = preprocess(img)
+        pred = model.predict(p)[0][0]
 
-    st.markdown("---")
-
-    if result > 0.5:
-        st.success(f"Prediction: **Dog** (Confidence: {result:.2f})")
-        st.markdown("<center><h2>🐶</h2></center>", unsafe_allow_html=True)
-    else:
-        conf = 1-result
-        st.success(f"Prediction: **Cat** (Confidence: {conf:.2f})")
-        st.markdown("<center><h2>🐱</h2></center>", unsafe_allow_html=True)
-
+        if pred > 0.5:
+            st.markdown("<h2 style='text-align:center; color:#059669;'>🐶 Dog Detected!</h2>", unsafe_allow_html=True)
+        else:
+            st.markdown("<h2 style='text-align:center; color:#DC2626;'>🐱 Cat Detected!</h2>", unsafe_allow_html=True)
 else:
-    st.info("Please upload an image to analyze.")
+    st.info("Upload an image to start prediction 🖼️")
+
+st.markdown('</div>', unsafe_allow_html=True)
 
