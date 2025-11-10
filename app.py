@@ -1,51 +1,54 @@
 import streamlit as st
 import tensorflow as tf
-from PIL import Image
 import numpy as np
+from PIL import Image
 
-# Page Config
-st.set_page_config(page_title="Cat vs Dog Classifier", layout="centered")
+# UI configs
+st.set_page_config(page_title="Cats vs Dogs Classifier", layout="centered")
 
 st.markdown("""
-<div style="text-align:center;">
-    <h1>🐶🐱 Cat vs Dog Image Classifier</h1>
-    <p style="font-size:18px; font-weight:500;">
-        Upload an image and our AI model will predict if it is a Dog or a Cat!
-    </p>
-</div>
+<center>
+
+# 🐶 Cats vs Dogs Classifier 🐱  
+Upload an image & the AI model will tell whether it's a **Cat** or a **Dog**.
+
+</center>
 """, unsafe_allow_html=True)
 
-# Load Model
-model = tf.keras.models.load_model("cats_dogs_model.keras")
+@st.cache_resource
+def load_model():
+    return tf.keras.models.load_model("cats_dogs_model.keras", compile=False)
 
-# File Upload Box
-uploaded_file = st.file_uploader("Upload Image Here", type=["png", "jpg", "jpeg"])
+model = load_model()
 
-def preprocess(img):
-    img = img.resize((200,200))
-    img = np.array(img) / 255.0
-    img = np.expand_dims(img, 0)
+uploaded_file = st.file_uploader("Upload an image...", type=["jpg", "png", "jpeg"])
+
+def preprocess(image):
+    image = image.resize((150,150))
+    img = np.array(image)/255.0
+    img = np.expand_dims(img, axis=0).astype("float32")
     return img
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file)
-    
-    # Display uploaded image
-    st.markdown("### 👇 Uploaded Image")
+if uploaded_file:
+    st.markdown("### Preview")
+    image = Image.open(uploaded_file).convert("RGB")
+
     st.image(image, width=350)
 
-    img = preprocess(image)
-    prediction = model.predict(img)[0][0]
-
-    result = "Dog 🐶" if prediction > 0.5 else "Cat 🐱"
-    prob_dog = float(prediction * 100)
-    prob_cat = float((1 - prediction) * 100)
+    with st.spinner("Predicting..."):
+        img = preprocess(image)
+        result = model.predict(img)[0][0]
 
     st.markdown("---")
-    st.markdown(f"<h2 style='text-align:center;'>Prediction: {result}</h2>", unsafe_allow_html=True)
 
-    st.markdown("### Probability Score")
-    st.progress(prob_dog/100)  # simple bar
+    if result > 0.5:
+        st.success(f"Prediction: **Dog** (Confidence: {result:.2f})")
+        st.markdown("<center><h2>🐶</h2></center>", unsafe_allow_html=True)
+    else:
+        conf = 1-result
+        st.success(f"Prediction: **Cat** (Confidence: {conf:.2f})")
+        st.markdown("<center><h2>🐱</h2></center>", unsafe_allow_html=True)
 
-    st.write(f"🐶 Dog probability: **{prob_dog:.2f}%**")
-    st.write(f"🐱 Cat probability: **{prob_cat:.2f}%**")
+else:
+    st.info("Please upload an image to analyze.")
+
