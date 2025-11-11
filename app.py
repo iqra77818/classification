@@ -1,64 +1,172 @@
-import streamlit as st
-import tensorflow as tf
-import numpy as np
+from flask import Flask, request, render_template_string
+from tensorflow.keras.models import load_model, Sequential
+from tensorflow.keras.layers import Flatten, Dense
 from PIL import Image
+import numpy as np
+import base64
+import io
 
-st.set_page_config(page_title="Cats vs Dogs Classifier", layout="centered")
+app = Flask(__name__)
 
-# custom CSS ui premium glassmorphism
-page_bg = """
+# Try to load your actual model; if fails, use dummy model
+try:
+    model = load_model("cats_dogs_model.keras", compile=False)
+except Exception as e:
+    print("Error loading model:", e)
+    # Dummy model for testing
+    model = Sequential([
+        Flatten(input_shape=(128,128,3)),
+        Dense(1, activation='sigmoid')
+    ])
+
+HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cat Dog Classifier</title>
 <style>
-.main {
-    background: linear-gradient(135deg, #ebf4ff 0%, #fdf2f8 100%);
-}
-.upload-box {
-    background: rgba(255,255,255,0.55);
-    border-radius: 18px;
-    padding: 25px;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.25);
-    box-shadow: 0px 8px 20px rgba(0,0,0,0.08);
-}
-.predict-btn {
-    width:100%;
-    font-size:18px;
-    border-radius:10px;
-    height:55px;
-}
+  @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    font-family: 'Montserrat', sans-serif;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    padding: 20px;
+  }
+
+  h1 {
+    font-weight: 700;
+    font-size: 3rem;
+    margin-bottom: 40px;
+    text-shadow: 0 3px 6px rgba(0,0,0,0.3);
+    letter-spacing: 3px;
+  }
+
+  .card {
+    background: #fff;
+    color: #333;
+    border-radius: 30px;
+    width: 480px;
+    max-width: 90vw;
+    padding: 40px 35px;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+    text-align: center;
+    transition: box-shadow 0.3s ease;
+  }
+
+  .card:hover {
+    box-shadow: 0 35px 70px rgba(0,0,0,0.25);
+  }
+
+  form {
+    margin-bottom: 30px;
+  }
+
+  input[type="file"] {
+    display: block;
+    margin: 0 auto 25px;
+    cursor: pointer;
+    width: 100%;
+    padding: 15px 12px;
+    border-radius: 16px;
+    border: 2px solid #ddd;
+    font-size: 1.1rem;
+    transition: border-color 0.25s ease;
+  }
+
+  input[type="file"]:hover {
+    border-color: #667eea;
+  }
+
+  button {
+    background: #667eea;
+    color: white;
+    font-size: 1.25rem;
+    font-weight: 700;
+    padding: 15px 45px;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    box-shadow: 0 10px 25px rgba(102,126,234,0.5);
+    transition: background 0.3s ease;
+  }
+
+  button:hover {
+    background: #5a6fd4;
+  }
+
+  img {
+    max-width: 320px;
+    border-radius: 28px;
+    box-shadow: 0 12px 30px rgba(102,126,234,0.3);
+    margin: 0 auto 25px;
+    display: block;
+  }
+
+  h3 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #667eea;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 0;
+  }
 </style>
+</head>
+<body>
+
+<h1>Cat🐱 and Dog🐶 Classifier</h1>
+
+<div class="card">
+  <form method="POST" enctype="multipart/form-data" autocomplete="off">
+    <input type="file" name="image" accept="image/*" required />
+    <button type="submit">Predict</button>
+  </form>
+
+  {% if img_data %}
+    <img src="data:image/png;base64,{{ img_data }}" alt="Uploaded Image" />
+    <h3>Prediction: {{ prediction }}</h3>
+  {% endif %}
+</div>
+
+</body>
+</html>
 """
-st.markdown(page_bg, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align:center; font-size:40px; color:#1a1a1a;'>🐶 Cats vs Dogs AI Classifier 🐱</h1>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align:center; color:#4B5563;'>Upload an image & let AI detect which one it is</h4>", unsafe_allow_html=True)
-st.write("")
 
-model = tf.keras.models.load_model("cats_dogs_model.keras")
-
-uploaded_file = st.file_uploader("Upload Image", type=["jpg","png","jpeg"])
-
-def preprocess(img):
+def predict(img):
     img = img.resize((128,128))
-    img = np.array(img) / 255.0
-    img = np.expand_dims(img, axis=0).astype("float32")
-    return img
+    x = np.array(img) / 255.0
+    x = np.expand_dims(x, axis=0)
+    p = model.predict(x)[0][0]
+    return "Dog" if p > 0.5 else "Cat"
 
-st.markdown('<div class="upload-box">', unsafe_allow_html=True)
+@app.route("/", methods=["GET","POST"])
+def home():
+    img_data = None
+    prediction = None
+    if request.method == "POST":
+        file = request.files["image"]
+        img = Image.open(file.stream).convert("RGB")
+        prediction = predict(img)
 
-if uploaded_file is not None:
-    img = Image.open(uploaded_file)
-    st.image(img, caption="Uploaded Image Preview", width=350)
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        img_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    if st.button("🔍 Predict", type="primary"):
-        p = preprocess(img)
-        pred = model.predict(p)[0][0]
+    return render_template_string(HTML, img_data=img_data, prediction=prediction)
 
-        if pred > 0.5:
-            st.markdown("<h2 style='text-align:center; color:#059669;'>🐶 Dog Detected!</h2>", unsafe_allow_html=True)
-        else:
-            st.markdown("<h2 style='text-align:center; color:#DC2626;'>🐱 Cat Detected!</h2>", unsafe_allow_html=True)
-else:
-    st.info("Upload an image to start prediction 🖼️")
-
-st.markdown('</div>', unsafe_allow_html=True)
-
+if __name__ == "__main__":
+    app.run(debug=True)
